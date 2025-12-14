@@ -43,6 +43,7 @@ jobs:
         run: |
           echo "Has NEWS_API_KEY from Secrets? ${{ secrets.NEWS_API_KEY != '' }}"
           echo "Has NEWS_API_KEY from Vars?    ${{ vars.NEWS_API_KEY != '' }}"
+          echo "Runtime NEWS_API_KEY set?      $([ -n \"${NEWS_API_KEY}\" ] && echo yes || echo no)"
           echo "Workflow ref: $GITHUB_REF"
 
       - name: Install dependencies
