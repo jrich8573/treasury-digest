@@ -10,6 +10,12 @@ jobs:
   run-digest:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # If you stored values under Settings → Environments (environment-scoped),
+    # the job must declare an environment to access those secrets/vars.
+    # By default we use "treasury-digest"; override by defining an Actions Variable
+    # named DIGEST_ENVIRONMENT.
+    environment:
+      name: ${{ vars.DIGEST_ENVIRONMENT || 'treasury-digest' }}
     env:
       # Required (Secrets preferred; Variables supported)
       NEWS_API_KEY: ${{ secrets.NEWS_API_KEY || vars.NEWS_API_KEY }}
@@ -41,9 +47,10 @@ jobs:
 
       - name: Debug (safe)
         run: |
+          echo "Job environment name:          ${{ vars.DIGEST_ENVIRONMENT || 'treasury-digest' }}"
           echo "Has NEWS_API_KEY from Secrets? ${{ secrets.NEWS_API_KEY != '' }}"
           echo "Has NEWS_API_KEY from Vars?    ${{ vars.NEWS_API_KEY != '' }}"
-          echo "Runtime NEWS_API_KEY set?      $([ -n \"${NEWS_API_KEY}\" ] && echo yes || echo no)"
+          echo "Runtime NEWS_API_KEY set?      $([ -n "${NEWS_API_KEY:-}" ] && echo yes || echo no)"
           echo "Workflow ref: $GITHUB_REF"
 
       - name: Install dependencies
