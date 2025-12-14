@@ -27,14 +27,15 @@ jobs:
       - name: Run digest
         env:
           # Required secrets
-          NEWS_API_KEY: ${{ secrets.NEWS_API_KEY }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          SMTP_USER: ${{ secrets.SMTP_USER }}
-          SMTP_PASS: ${{ secrets.SMTP_PASS }}
-          TO_EMAILS: ${{ secrets.TO_EMAILS }}
+          # Allow configuration via either Secrets (recommended) or Variables.
+          NEWS_API_KEY: ${{ secrets.NEWS_API_KEY || vars.NEWS_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY || vars.OPENAI_API_KEY }}
+          SMTP_USER: ${{ secrets.SMTP_USER || vars.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS || vars.SMTP_PASS }}
+          TO_EMAILS: ${{ secrets.TO_EMAILS || vars.TO_EMAILS }}
 
           # Optional secrets/vars
-          FROM_EMAIL: ${{ secrets.FROM_EMAIL }}
+          FROM_EMAIL: ${{ secrets.FROM_EMAIL || vars.FROM_EMAIL }}
           SMTP_HOST: ${{ vars.SMTP_HOST }}
           SMTP_PORT: ${{ vars.SMTP_PORT }}
 
@@ -46,5 +47,12 @@ jobs:
           OPENAI_MAX_TOKENS: ${{ vars.OPENAI_MAX_TOKENS }}
           OPENAI_TEMPERATURE: ${{ vars.OPENAI_TEMPERATURE }}
         run: |
+          # Presence checks (do not print secret values)
+          for v in NEWS_API_KEY OPENAI_API_KEY SMTP_USER SMTP_PASS TO_EMAILS; do
+            if [ -z "${!v}" ]; then
+              echo "Missing required env var: $v"
+              exit 1
+            fi
+          done
           python treasury_digest.py
 
