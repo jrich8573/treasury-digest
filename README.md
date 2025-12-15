@@ -48,7 +48,7 @@ Go to **Settings → Secrets and variables → Actions → Variables** and add a
 - **`SMTP_HOST`**: default `smtp.gmail.com`
 - **`SMTP_PORT`**: default `587` (`starttls`/`none`) or `465` (`ssl`)
 - **`SMTP_SECURITY`**: default `starttls` (supported: `starttls`, `ssl`, `none`)
-- **`QUERY`**: the NewsAPI query (default includes Treasury + IRS + Fed + fiscal/monetary/economic policy terms)
+- **`QUERY`**: the NewsAPI query (default includes Treasury + IRS + Fed + economic policy + U.S. stock market terms)
 - **`SOURCES`**: domain allowlist (defaults to major finance outlets; override with your own comma-separated list)
 - **`MAX_ARTICLES`**: default `50`
 - **`NEWSAPI_Q_MAX_LEN`**: default `450` (if your query is very long, the script auto-splits it into multiple NewsAPI calls)
@@ -65,7 +65,7 @@ Go to **Settings → Secrets and variables → Actions → Variables** and add a
 Default `QUERY` used by the script:
 
 ```
-"United States Treasury" OR "U.S. Treasury" OR "Treasury Department" OR "IRS" OR "Internal Revenue Service" OR "FRB" OR "Federal Reserve Board" OR "Federal Reserve" or "Fiscal Policy" OR "Monetary Policy" OR "Economic Policy" OR "Economic Outlook" OR "Economic Data" OR "Economic Indicators" OR "Economic Growth" OR "Economic Stability" OR "Economic Development" OR "Economic Opportunity" OR "Economic Inclusion" OR "Economic Equality" OR "Economic Justice" OR "Economic Security" OR "Economic Prosperity" OR "Economic Well-being" OR "Economic Happiness" OR "Economic Fulfillment" OR "Economic Satisfaction" OR "Economic Happiness" OR "Economic Fulfillment" OR "Economic Satisfaction" OR "Economic Happiness" OR "Economic Fulfillment" OR "Economic Satisfaction"
+"United States Treasury" OR "U.S. Treasury" OR "Treasury Department" OR "IRS" OR "Internal Revenue Service" OR "FRB" OR "Federal Reserve Board" OR "Federal Reserve" OR "Fiscal Policy" OR "Monetary Policy" OR "Economic Policy" OR "Economic Outlook" OR "Economic Data" OR "Stock Market" OR "United States Stock Market" OR "NYSE" OR "NASDAQ"
 ```
 
 Default `SOURCES` used by the script:
