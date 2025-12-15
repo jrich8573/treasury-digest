@@ -51,6 +51,7 @@ Go to **Settings → Secrets and variables → Actions → Variables** and add a
 - **`QUERY`**: the NewsAPI query (default includes Treasury + IRS + Fed + fiscal/monetary/economic policy terms)
 - **`SOURCES`**: optional domain list (example: `wsj.com,nytimes.com`)
 - **`MAX_ARTICLES`**: default `50`
+- **`NEWSAPI_Q_MAX_LEN`**: default `450` (if your query is very long, the script auto-splits it into multiple NewsAPI calls)
 - **`LLM_PROVIDER`**: default `ollama`
 - **`OLLAMA_BASE_URL`**: default `http://localhost:11434`
 - **`OLLAMA_MODEL`**: default `llama3.2:3b`

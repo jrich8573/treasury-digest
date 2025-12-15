@@ -68,9 +68,10 @@ TO_EMAILS = _parse_email_list(_require_env("TO_EMAILS"))  # comma-separated list
 DRY_RUN = _is_truthy(_env("DRY_RUN"))
 
 # Search parameters
-QUERY = _env("QUERY", '"United States Treasury" OR "U.S. Treasury" OR "Treasury Department" OR "IRS" OR "Internal Revenue Service" OR "FRB" OR "Federal Reserve Board" OR "Federal Reserve" or "Fiscal Policy" OR "Monetary Policy" OR "Economic Policy" OR "Economic Outlook" OR "Economic Data" OR "Economic Indicators" OR "Economic Growth" OR "Economic Stability" OR "Economic Development" OR "Economic Opportunity" OR "Economic Inclusion" OR "Economic Equality" OR "Economic Justice" OR "Economic Security" OR "Economic Prosperity" OR "Economic Well-being" OR "Economic Happiness" OR "Economic Fulfillment" OR "Economic Satisfaction" OR "Economic Happiness" OR "Economic Fulfillment" OR "Economic Satisfaction" OR "Economic Happiness" OR "Economic Fulfillment" OR "Economic Satisfaction"')
+QUERY = _env("QUERY", '"United States Treasury" OR "U.S. Treasury" OR "Treasury Department" OR "IRS" OR "Internal Revenue Service" OR "FRB" OR "Federal Reserve Board" OR "Federal Reserve" OR "Fiscal Policy" OR "Monetary Policy" OR "Economic Policy" OR "Economic Outlook" OR "Economic Data" OR "Economic Indicators" OR "Economic Growth" OR "Economic Stability" OR "Economic Development" OR "Economic Opportunity" OR "Economic Inclusion" OR "Economic Equality" OR "Economic Justice" OR "Economic Security" OR "Economic Prosperity" OR "Economic Well-being" OR "Economic Happiness" OR "Economic Fulfillment" OR "Economic Satisfaction" OR "Economic Happiness" OR "Economic Fulfillment" OR "Economic Satisfaction" OR "Economic Happiness" OR "Economic Fulfillment" OR "Economic Satisfaction"')
 SOURCES = _env("SOURCES")  # e.g. "bloomberg.com,wsj.com,nytimes.com"
 MAX_ARTICLES = int(_env("MAX_ARTICLES", "50"))
+NEWSAPI_Q_MAX_LEN = int(_env("NEWSAPI_Q_MAX_LEN", "450"))  # safety limit for long q=... strings
 
 # LLM parameters (free/local via Ollama by default)
 LLM_PROVIDER = _env("LLM_PROVIDER", "ollama").strip().lower()  # "ollama"
@@ -91,40 +92,83 @@ def fetch_treasury_news():
     now = datetime.now(timezone.utc)
     from_date = (now - timedelta(days=1)).isoformat()
 
-    params = {
-        "q": QUERY,
-        "from": from_date,
-        "language": "en",
-        "sortBy": "publishedAt",
-        "pageSize": MAX_ARTICLES,
-        "apiKey": NEWS_API_KEY,
-    }
-    if SOURCES:
-        params["domains"] = SOURCES
+    def _normalize_query(q: str) -> str:
+        # NewsAPI expects boolean operators in uppercase; also trim whitespace.
+        q2 = q.replace(" or ", " OR ").replace(" and ", " AND ").replace(" not ", " NOT ")
+        return " ".join(q2.split())
 
-    resp = requests.get(url, params=params)
-    resp.raise_for_status()
-    data = resp.json()
+    def _split_or_terms(q: str) -> list[str]:
+        # Very simple splitter; good enough for common `"phrase" OR "phrase"` usage.
+        q_norm = _normalize_query(q)
+        parts = [p.strip() for p in q_norm.split(" OR ") if p.strip()]
+        return parts if parts else [q_norm]
 
-    articles_raw = data.get("articles", [])
+    def _batch_terms(terms: list[str], max_len: int) -> list[str]:
+        batches: list[str] = []
+        current: list[str] = []
+        for t in terms:
+            candidate = t if not current else (" OR ".join(current + [t]))
+            if len(candidate) > max_len and current:
+                batches.append(" OR ".join(current))
+                current = [t]
+            else:
+                current.append(t)
+        if current:
+            batches.append(" OR ".join(current))
+        return batches
+
+    def _newsapi_request(q: str) -> list[dict]:
+        params = {
+            "q": q,
+            "from": from_date,
+            "language": "en",
+            "sortBy": "publishedAt",
+            "pageSize": min(100, MAX_ARTICLES),
+            "apiKey": NEWS_API_KEY,
+        }
+        if SOURCES:
+            params["domains"] = SOURCES
+
+        resp = requests.get(url, params=params, timeout=30)
+        if not resp.ok:
+            # NewsAPI usually returns JSON: {status, code, message}
+            try:
+                err = resp.json()
+                msg = err.get("message") or str(err)
+            except Exception:
+                msg = resp.text
+            raise RuntimeError(f"NewsAPI request failed ({resp.status_code}): {msg}")
+        data = resp.json()
+        return data.get("articles", []) or []
+
+    query_norm = _normalize_query(QUERY)
+    if len(query_norm) > NEWSAPI_Q_MAX_LEN:
+        terms = _split_or_terms(query_norm)
+        query_batches = _batch_terms(terms, NEWSAPI_Q_MAX_LEN)
+    else:
+        query_batches = [query_norm]
+
     articles = []
     seen_urls = set()
+    for q in query_batches:
+        for a in _newsapi_request(q):
+            url_a = a.get("url")
+            if not url_a or url_a in seen_urls:
+                continue
+            seen_urls.add(url_a)
+            articles.append(
+                {
+                    "title": a.get("title"),
+                    "description": a.get("description"),
+                    "source": a.get("source", {}).get("name"),
+                    "url": url_a,
+                    "published_at": a.get("publishedAt"),
+                }
+            )
 
-    for a in articles_raw:
-        url_a = a.get("url")
-        if not url_a or url_a in seen_urls:
-            continue
-        seen_urls.add(url_a)
-
-        articles.append({
-            "title": a.get("title"),
-            "description": a.get("description"),
-            "source": a.get("source", {}).get("name"),
-            "url": url_a,
-            "published_at": a.get("publishedAt"),
-        })
-
-    return articles
+    # Keep at most MAX_ARTICLES. Each request is sorted, but merging batches can interleave.
+    articles.sort(key=lambda x: x.get("published_at") or "", reverse=True)
+    return articles[:MAX_ARTICLES]
 
 
 # ------------- GPT CURATOR ------------- #
