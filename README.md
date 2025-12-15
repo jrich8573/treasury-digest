@@ -48,9 +48,13 @@ Go to **Settings → Secrets and variables → Actions → Variables** and add a
 - **`SMTP_HOST`**: default `smtp.gmail.com`
 - **`SMTP_PORT`**: default `587`
 - **`SMTP_SECURITY`**: default `starttls` (supported: `starttls`, `ssl`, `none`)
-- **`QUERY`**: the NewsAPI query (default is a Treasury-focused query)
+- **`QUERY`**: the NewsAPI query (default includes Treasury + IRS + Federal Reserve terms)
 - **`SOURCES`**: optional domain list (example: `wsj.com,nytimes.com`)
 - **`MAX_ARTICLES`**: default `25`
+
+Default `QUERY` used by the script:
+
+`"United States Treasury" OR "U.S. Treasury" OR "Treasury Department" OR "IRS" OR "Internal Revenue Service" OR "FRB" OR "Federal Reserve Board" OR "Federal Reserve"`
 - **`LLM_PROVIDER`**: default `ollama`
 - **`OLLAMA_BASE_URL`**: default `http://localhost:11434`
 - **`OLLAMA_MODEL`**: default `llama3.2:3b`
