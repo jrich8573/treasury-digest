@@ -1,5 +1,6 @@
 import os
 import smtplib
+import ssl
 import textwrap
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -52,7 +53,12 @@ NEWS_API_KEY = _require_env("NEWS_API_KEY")              # NewsAPI.org key
 
 # SMTP / email settings
 SMTP_HOST = _env("SMTP_HOST", "smtp.gmail.com")
-SMTP_PORT = int(_env("SMTP_PORT", "587"))
+SMTP_SECURITY = _env("SMTP_SECURITY", "starttls").strip().lower()  # starttls | ssl | none
+_smtp_port_raw = os.environ.get("SMTP_PORT")
+if _smtp_port_raw is None or not str(_smtp_port_raw).strip():
+    SMTP_PORT = 465 if SMTP_SECURITY == "ssl" else 587
+else:
+    SMTP_PORT = int(str(_smtp_port_raw).strip())
 SMTP_USER = _require_env("SMTP_USER")                    # your email / SMTP username
 SMTP_PASS = _require_env("SMTP_PASS")                    # app password / SMTP credential
 FROM_EMAIL = _env("FROM_EMAIL", SMTP_USER).strip()
@@ -259,10 +265,34 @@ def build_email(curated_markdown):
 # ------------- EMAIL SENDER ------------- #
 
 def send_email(msg):
-    with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
-        server.starttls()
-        server.login(SMTP_USER, SMTP_PASS)
-        server.sendmail(FROM_EMAIL, TO_EMAILS, msg.as_string())
+    try:
+        if SMTP_SECURITY == "ssl":
+            context = ssl.create_default_context()
+            with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, context=context) as server:
+                server.login(SMTP_USER, SMTP_PASS)
+                server.sendmail(FROM_EMAIL, TO_EMAILS, msg.as_string())
+            return
+
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+            server.ehlo()
+            if SMTP_SECURITY == "starttls":
+                context = ssl.create_default_context()
+                server.starttls(context=context)
+                server.ehlo()
+            elif SMTP_SECURITY == "none":
+                pass
+            else:
+                raise RuntimeError(
+                    f"Unsupported SMTP_SECURITY: {SMTP_SECURITY}. Supported: starttls, ssl, none"
+                )
+            server.login(SMTP_USER, SMTP_PASS)
+            server.sendmail(FROM_EMAIL, TO_EMAILS, msg.as_string())
+    except smtplib.SMTPAuthenticationError as e:
+        raise RuntimeError(
+            "SMTP authentication failed (535). If using Gmail, you typically must use an App Password "
+            "(requires 2-Step Verification) instead of your normal password. "
+            "Also ensure SMTP_SECURITY/SMTP_PORT are correct for your provider."
+        ) from e
 
 
 # ------------- MAIN RUNNER ------------- #

@@ -20,9 +20,12 @@ All sensitive values (API keys, SMTP password, recipient emails) are read from *
 ### Step 1: Get your external credentials
 
 - **NewsAPI key**: create an API key on NewsAPI.org
-- **OpenAI API key**: create an API key in your OpenAI account
 - **SMTP credentials**:
-  - If using Gmail, create an **App Password** (recommended) and use that as `SMTP_PASS`
+  - If using Gmail:
+    - Turn on **2‑Step Verification**
+    - Create an **App Password** and use that as `SMTP_PASS` (a normal Gmail password will fail in Actions with `535 5.7.8 BadCredentials`)
+    - Use `SMTP_HOST=smtp.gmail.com`, `SMTP_SECURITY=starttls`, `SMTP_PORT=587` (default)
+    - Alternatively: `SMTP_SECURITY=ssl`, `SMTP_PORT=465`
   - Or use another SMTP provider (SendGrid, Mailgun SMTP, etc.)
 
 ### Step 2: Add GitHub Secrets
@@ -44,6 +47,7 @@ Go to **Settings → Secrets and variables → Actions → Variables** and add a
 
 - **`SMTP_HOST`**: default `smtp.gmail.com`
 - **`SMTP_PORT`**: default `587`
+- **`SMTP_SECURITY`**: default `starttls` (supported: `starttls`, `ssl`, `none`)
 - **`QUERY`**: the NewsAPI query (default is a Treasury-focused query)
 - **`SOURCES`**: optional domain list (example: `wsj.com,nytimes.com`)
 - **`MAX_ARTICLES`**: default `25`
@@ -84,6 +88,7 @@ Optional:
 - `FROM_EMAIL`
 - `SMTP_HOST` (default `smtp.gmail.com`)
 - `SMTP_PORT` (default `587`)
+- `SMTP_SECURITY` (default `starttls`)
 - `QUERY`, `SOURCES`, `MAX_ARTICLES`
 - `LLM_PROVIDER` (default `ollama`)
 - `OLLAMA_BASE_URL` (default `http://localhost:11434`)
