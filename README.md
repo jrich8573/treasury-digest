@@ -3,7 +3,7 @@
 This repo contains a Python script (`treasury_digest.py`) that:
 
 - **Fetches** the last ~24 hours of U.S. Treasury-related news from **NewsAPI**
-- **Curates + summarizes** the most important themes using **OpenAI**
+- **Curates + summarizes** the most important themes using a **free local LLM (Ollama)**
 - **Emails** the resulting brief via **SMTP** (HTML + plain text)
 
 ## Automation (GitHub Actions)
@@ -30,7 +30,6 @@ All sensitive values (API keys, SMTP password, recipient emails) are read from *
 In your GitHub repo, go to **Settings → Secrets and variables → Actions → Secrets** and add:
 
 - **`NEWS_API_KEY`**: NewsAPI key
-- **`OPENAI_API_KEY`**: OpenAI API key
 - **`SMTP_USER`**: SMTP username (often your email address)
 - **`SMTP_PASS`**: SMTP password / app password
 - **`TO_EMAILS`**: comma-separated recipient list (example: `person1@acme.com,person2@acme.com`)
@@ -48,9 +47,12 @@ Go to **Settings → Secrets and variables → Actions → Variables** and add a
 - **`QUERY`**: the NewsAPI query (default is a Treasury-focused query)
 - **`SOURCES`**: optional domain list (example: `wsj.com,nytimes.com`)
 - **`MAX_ARTICLES`**: default `25`
-- **`OPENAI_MODEL`**: default `gpt-4.1-mini`
-- **`OPENAI_MAX_TOKENS`**: default `1800`
-- **`OPENAI_TEMPERATURE`**: default `0.4`
+- **`LLM_PROVIDER`**: default `ollama`
+- **`OLLAMA_BASE_URL`**: default `http://localhost:11434`
+- **`OLLAMA_MODEL`**: default `llama3.2:3b`
+- **`OLLAMA_TIMEOUT_SECONDS`**: default `120`
+- **`LLM_MAX_TOKENS`**: default `1800`
+- **`LLM_TEMPERATURE`**: default `0.4`
 
 ## Running locally
 
@@ -73,7 +75,6 @@ You can export env vars in your shell (or use a `.env` loader of your choice).
 Required:
 
 - `NEWS_API_KEY`
-- `OPENAI_API_KEY`
 - `SMTP_USER`
 - `SMTP_PASS`
 - `TO_EMAILS`
@@ -84,7 +85,11 @@ Optional:
 - `SMTP_HOST` (default `smtp.gmail.com`)
 - `SMTP_PORT` (default `587`)
 - `QUERY`, `SOURCES`, `MAX_ARTICLES`
-- `OPENAI_MODEL`, `OPENAI_MAX_TOKENS`, `OPENAI_TEMPERATURE`
+- `LLM_PROVIDER` (default `ollama`)
+- `OLLAMA_BASE_URL` (default `http://localhost:11434`)
+- `OLLAMA_MODEL` (default `llama3.2:3b`)
+- `OLLAMA_TIMEOUT_SECONDS` (default `120`)
+- `LLM_MAX_TOKENS`, `LLM_TEMPERATURE`
 
 ### Step 3: Run
 

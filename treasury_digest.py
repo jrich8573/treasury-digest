@@ -6,7 +6,6 @@ from email.mime.text import MIMEText
 from datetime import datetime, timedelta, timezone
 
 import requests
-from openai import OpenAI
 
 # ------------- CONFIG ------------- #
 
@@ -50,7 +49,6 @@ def _is_truthy(raw: str | None) -> bool:
 
 
 NEWS_API_KEY = _require_env("NEWS_API_KEY")              # NewsAPI.org key
-OPENAI_API_KEY = _require_env("OPENAI_API_KEY")          # OpenAI key
 
 # SMTP / email settings
 SMTP_HOST = _env("SMTP_HOST", "smtp.gmail.com")
@@ -68,10 +66,15 @@ QUERY = _env("QUERY", '"United States Treasury" OR "U.S. Treasury" OR "Treasury 
 SOURCES = _env("SOURCES")  # e.g. "bloomberg.com,wsj.com,nytimes.com"
 MAX_ARTICLES = int(_env("MAX_ARTICLES", "25"))
 
-# OpenAI parameters
-OPENAI_MODEL = _env("OPENAI_MODEL", "gpt-4.1-mini")
-OPENAI_MAX_TOKENS = int(_env("OPENAI_MAX_TOKENS", "1800"))
-OPENAI_TEMPERATURE = float(_env("OPENAI_TEMPERATURE", "0.4"))
+# LLM parameters (free/local via Ollama by default)
+LLM_PROVIDER = _env("LLM_PROVIDER", "ollama").strip().lower()  # "ollama"
+LLM_MAX_TOKENS = int(_env("LLM_MAX_TOKENS", "1800"))
+LLM_TEMPERATURE = float(_env("LLM_TEMPERATURE", "0.4"))
+
+# Ollama settings
+OLLAMA_BASE_URL = _env("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
+OLLAMA_MODEL = _env("OLLAMA_MODEL", "llama3.2:3b")
+OLLAMA_TIMEOUT_SECONDS = int(_env("OLLAMA_TIMEOUT_SECONDS", "120"))
 
 
 # ------------- NEWS FETCHER ------------- #
@@ -120,12 +123,44 @@ def fetch_treasury_news():
 
 # ------------- GPT CURATOR ------------- #
 
+def _ollama_chat(system_prompt: str, user_prompt: str) -> str:
+    """
+    Call a local Ollama server (free) using the chat API.
+    Docs: https://github.com/ollama/ollama/blob/main/docs/api.md
+    """
+    url = f"{OLLAMA_BASE_URL}/api/chat"
+    payload = {
+        "model": OLLAMA_MODEL,
+        "stream": False,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        "options": {
+            "temperature": LLM_TEMPERATURE,
+            # Ollama uses num_predict (approx) instead of max_tokens
+            "num_predict": LLM_MAX_TOKENS,
+        },
+    }
+    resp = requests.post(url, json=payload, timeout=OLLAMA_TIMEOUT_SECONDS)
+    resp.raise_for_status()
+    data = resp.json()
+    msg = (data.get("message") or {}).get("content")
+    if not msg:
+        raise RuntimeError("Ollama response missing message.content")
+    return msg
+
+
+def _curate_with_llm(system_prompt: str, user_prompt: str) -> str:
+    if LLM_PROVIDER == "ollama":
+        return _ollama_chat(system_prompt=system_prompt, user_prompt=user_prompt)
+    raise RuntimeError(f"Unsupported LLM_PROVIDER: {LLM_PROVIDER}. Supported: ollama")
+
+
 def curate_with_gpt(articles):
-    """Use GPT to curate and summarize Treasury news."""
+    """Use an LLM to curate and summarize Treasury news."""
     if not articles:
         return "No significant U.S. Treasury news found in the last 24 hours."
-
-    client = OpenAI(api_key=OPENAI_API_KEY)
 
     # Create a compact plain-text representation of the articles
     article_block_lines = []
@@ -163,19 +198,7 @@ Tasks:
 
 Output in **well-structured Markdown** suitable for an email body, with clear headings, bullet points, and embedded URLs where useful.
 """
-
-    response = client.chat.completions.create(
-        model=OPENAI_MODEL,  # e.g. gpt-4.1-mini / gpt-4.1 depending on your access
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        max_tokens=OPENAI_MAX_TOKENS,
-        temperature=OPENAI_TEMPERATURE,
-    )
-
-    curated_markdown = response.choices[0].message.content
-    return curated_markdown
+    return _curate_with_llm(system_prompt=system_prompt, user_prompt=user_prompt)
 
 
 # ------------- EMAIL BUILDER ------------- #
