@@ -46,21 +46,23 @@ Optional (Secrets):
 Go to **Settings → Secrets and variables → Actions → Variables** and add any of these if you want to override defaults:
 
 - **`SMTP_HOST`**: default `smtp.gmail.com`
-- **`SMTP_PORT`**: default `587`
+- **`SMTP_PORT`**: default `587` (`starttls`/`none`) or `465` (`ssl`)
 - **`SMTP_SECURITY`**: default `starttls` (supported: `starttls`, `ssl`, `none`)
-- **`QUERY`**: the NewsAPI query (default includes Treasury + IRS + Federal Reserve terms)
+- **`QUERY`**: the NewsAPI query (default includes Treasury + IRS + Fed + fiscal/monetary/economic policy terms)
 - **`SOURCES`**: optional domain list (example: `wsj.com,nytimes.com`)
-- **`MAX_ARTICLES`**: default `25`
-
-Default `QUERY` used by the script:
-
-`"United States Treasury" OR "U.S. Treasury" OR "Treasury Department" OR "IRS" OR "Internal Revenue Service" OR "FRB" OR "Federal Reserve Board" OR "Federal Reserve"`
+- **`MAX_ARTICLES`**: default `50`
 - **`LLM_PROVIDER`**: default `ollama`
 - **`OLLAMA_BASE_URL`**: default `http://localhost:11434`
 - **`OLLAMA_MODEL`**: default `llama3.2:3b`
 - **`OLLAMA_TIMEOUT_SECONDS`**: default `120`
 - **`LLM_MAX_TOKENS`**: default `1800`
 - **`LLM_TEMPERATURE`**: default `0.4`
+
+Default `QUERY` used by the script:
+
+```
+"United States Treasury" OR "U.S. Treasury" OR "Treasury Department" OR "IRS" OR "Internal Revenue Service" OR "FRB" OR "Federal Reserve Board" OR "Federal Reserve" or "Fiscal Policy" OR "Monetary Policy" OR "Economic Policy" OR "Economic Outlook" OR "Economic Data" OR "Economic Indicators" OR "Economic Growth" OR "Economic Stability" OR "Economic Development" OR "Economic Opportunity" OR "Economic Inclusion" OR "Economic Equality" OR "Economic Justice" OR "Economic Security" OR "Economic Prosperity" OR "Economic Well-being" OR "Economic Happiness" OR "Economic Fulfillment" OR "Economic Satisfaction" OR "Economic Happiness" OR "Economic Fulfillment" OR "Economic Satisfaction" OR "Economic Happiness" OR "Economic Fulfillment" OR "Economic Satisfaction"
+```
 
 ## Running locally
 
@@ -91,7 +93,7 @@ Optional:
 
 - `FROM_EMAIL`
 - `SMTP_HOST` (default `smtp.gmail.com`)
-- `SMTP_PORT` (default `587`)
+- `SMTP_PORT` (default `587` for `starttls`/`none`, or `465` for `ssl`)
 - `SMTP_SECURITY` (default `starttls`)
 - `QUERY`, `SOURCES`, `MAX_ARTICLES`
 - `LLM_PROVIDER` (default `ollama`)

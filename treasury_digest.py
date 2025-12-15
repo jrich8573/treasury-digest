@@ -70,7 +70,7 @@ DRY_RUN = _is_truthy(_env("DRY_RUN"))
 # Search parameters
 QUERY = _env("QUERY", '"United States Treasury" OR "U.S. Treasury" OR "Treasury Department" OR "IRS" OR "Internal Revenue Service" OR "FRB" OR "Federal Reserve Board" OR "Federal Reserve" or "Fiscal Policy" OR "Monetary Policy" OR "Economic Policy" OR "Economic Outlook" OR "Economic Data" OR "Economic Indicators" OR "Economic Growth" OR "Economic Stability" OR "Economic Development" OR "Economic Opportunity" OR "Economic Inclusion" OR "Economic Equality" OR "Economic Justice" OR "Economic Security" OR "Economic Prosperity" OR "Economic Well-being" OR "Economic Happiness" OR "Economic Fulfillment" OR "Economic Satisfaction" OR "Economic Happiness" OR "Economic Fulfillment" OR "Economic Satisfaction" OR "Economic Happiness" OR "Economic Fulfillment" OR "Economic Satisfaction"')
 SOURCES = _env("SOURCES")  # e.g. "bloomberg.com,wsj.com,nytimes.com"
-MAX_ARTICLES = int(_env("MAX_ARTICLES", "25"))
+MAX_ARTICLES = int(_env("MAX_ARTICLES", "50"))
 
 # LLM parameters (free/local via Ollama by default)
 LLM_PROVIDER = _env("LLM_PROVIDER", "ollama").strip().lower()  # "ollama"
