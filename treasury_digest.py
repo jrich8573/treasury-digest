@@ -68,7 +68,7 @@ TO_EMAILS = _parse_email_list(_require_env("TO_EMAILS"))  # comma-separated list
 DRY_RUN = _is_truthy(_env("DRY_RUN"))
 
 # Search parameters
-QUERY = _env("QUERY", '"United States Treasury" OR "U.S. Treasury" OR "Treasury Department"')
+QUERY = _env("QUERY", '"United States Treasury" OR "U.S. Treasury" OR "Treasury Department" OR "IRS" OR "Internal Revenue Service" OR "FRB" OR "Federal Reserve Board" OR "Federal Reserve"')
 SOURCES = _env("SOURCES")  # e.g. "bloomberg.com,wsj.com,nytimes.com"
 MAX_ARTICLES = int(_env("MAX_ARTICLES", "25"))
 
