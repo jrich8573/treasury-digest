@@ -66,12 +66,15 @@ TO_EMAILS = _parse_email_list(_require_env("TO_EMAILS"))  # comma-separated list
 
 # Optional runtime toggles
 DRY_RUN = _is_truthy(_env("DRY_RUN"))
+DEBUG = _is_truthy(_env("DEBUG"))
+VERIFY_EMPTY_RESULTS = _is_truthy(_env("VERIFY_EMPTY_RESULTS", "1"))
 
 # Search parameters
 QUERY = _env("QUERY", '"United States Treasury" OR "U.S. Treasury" OR "Treasury Department" OR "IRS" OR "Internal Revenue Service" OR "FRB" OR "Federal Reserve Board" OR "Federal Reserve" OR "Fiscal Policy" OR "Monetary Policy" OR "Economic Policy" OR "Economic Outlook" OR "Economic Data" OR "Economic Indicators" OR "Economic Growth" OR "Economic Stability" OR "Economic Development" OR "Economic Opportunity" OR "Economic Inclusion" OR "Economic Equality" OR "Economic Justice" OR "Economic Security" OR "Economic Prosperity" OR "Economic Well-being" OR "Economic Happiness" OR "Economic Fulfillment" OR "Economic Satisfaction" OR "Economic Happiness" OR "Economic Fulfillment" OR "Economic Satisfaction" OR "Economic Happiness" OR "Economic Fulfillment" OR "Economic Satisfaction"')
 SOURCES = _env("SOURCES")  # e.g. "bloomberg.com,wsj.com,nytimes.com"
 MAX_ARTICLES = int(_env("MAX_ARTICLES", "50"))
 NEWSAPI_Q_MAX_LEN = int(_env("NEWSAPI_Q_MAX_LEN", "450"))  # safety limit for long q=... strings
+NEWS_LOOKBACK_DAYS = int(_env("NEWS_LOOKBACK_DAYS", "1"))
 
 # LLM parameters (free/local via Ollama by default)
 LLM_PROVIDER = _env("LLM_PROVIDER", "ollama").strip().lower()  # "ollama"
@@ -90,7 +93,7 @@ def fetch_treasury_news():
     """Fetch recent U.S. Treasury-related news from NewsAPI."""
     url = "https://newsapi.org/v2/everything"
     now = datetime.now(timezone.utc)
-    from_date = (now - timedelta(days=1)).isoformat()
+    from_date = (now - timedelta(days=NEWS_LOOKBACK_DAYS)).isoformat()
 
     def _normalize_query(q: str) -> str:
         # NewsAPI expects boolean operators in uppercase; also trim whitespace.
@@ -117,13 +120,13 @@ def fetch_treasury_news():
             batches.append(" OR ".join(current))
         return batches
 
-    def _newsapi_request(q: str) -> list[dict]:
+    def _newsapi_get(q: str, *, from_iso: str, page_size: int) -> dict:
         params = {
             "q": q,
-            "from": from_date,
+            "from": from_iso,
             "language": "en",
             "sortBy": "publishedAt",
-            "pageSize": min(100, MAX_ARTICLES),
+            "pageSize": page_size,
             "apiKey": NEWS_API_KEY,
         }
         if SOURCES:
@@ -138,8 +141,7 @@ def fetch_treasury_news():
             except Exception:
                 msg = resp.text
             raise RuntimeError(f"NewsAPI request failed ({resp.status_code}): {msg}")
-        data = resp.json()
-        return data.get("articles", []) or []
+        return resp.json()
 
     query_norm = _normalize_query(QUERY)
     if len(query_norm) > NEWSAPI_Q_MAX_LEN:
@@ -150,8 +152,11 @@ def fetch_treasury_news():
 
     articles = []
     seen_urls = set()
+    batch_totals: list[int] = []
     for q in query_batches:
-        for a in _newsapi_request(q):
+        data = _newsapi_get(q, from_iso=from_date, page_size=min(100, MAX_ARTICLES))
+        batch_totals.append(int(data.get("totalResults") or 0))
+        for a in (data.get("articles", []) or []):
             url_a = a.get("url")
             if not url_a or url_a in seen_urls:
                 continue
@@ -168,7 +173,40 @@ def fetch_treasury_news():
 
     # Keep at most MAX_ARTICLES. Each request is sorted, but merging batches can interleave.
     articles.sort(key=lambda x: x.get("published_at") or "", reverse=True)
-    return articles[:MAX_ARTICLES]
+    articles = articles[:MAX_ARTICLES]
+
+    if DEBUG:
+        print(
+            f"NewsAPI debug: lookback_days={NEWS_LOOKBACK_DAYS}, "
+            f"batches={len(query_batches)}, batch_totalResults={batch_totals}, "
+            f"returned_articles={len(articles)}"
+        )
+
+    # Verification: if empty, do a cheap sanity check to confirm this is accurate.
+    if VERIFY_EMPTY_RESULTS and not articles:
+        try:
+            sanity_q = "Treasury OR Federal Reserve OR IRS"
+            sanity_1d = _newsapi_get(
+                sanity_q,
+                from_iso=(now - timedelta(days=1)).isoformat(),
+                page_size=1,
+            )
+            sanity_7d = _newsapi_get(
+                sanity_q,
+                from_iso=(now - timedelta(days=7)).isoformat(),
+                page_size=1,
+            )
+            print(
+                "NewsAPI empty-results check: "
+                f"your_query_batches={len(query_batches)} totalResults_sum={sum(batch_totals)}; "
+                f"sanity_query_totalResults_1d={int(sanity_1d.get('totalResults') or 0)}; "
+                f"sanity_query_totalResults_7d={int(sanity_7d.get('totalResults') or 0)}; "
+                "If sanity totals are > 0, widen NEWS_LOOKBACK_DAYS or simplify QUERY/SOURCES."
+            )
+        except Exception as e:
+            print(f"NewsAPI empty-results check failed: {e}")
+
+    return articles
 
 
 # ------------- GPT CURATOR ------------- #

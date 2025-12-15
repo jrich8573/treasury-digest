@@ -38,6 +38,10 @@ jobs:
       QUERY: ${{ vars.QUERY }}
       SOURCES: ${{ vars.SOURCES }}
       MAX_ARTICLES: ${{ vars.MAX_ARTICLES }}
+      NEWS_LOOKBACK_DAYS: ${{ vars.NEWS_LOOKBACK_DAYS }}
+      NEWSAPI_Q_MAX_LEN: ${{ vars.NEWSAPI_Q_MAX_LEN }}
+      DEBUG: ${{ vars.DEBUG }}
+      VERIFY_EMPTY_RESULTS: ${{ vars.VERIFY_EMPTY_RESULTS }}
       LLM_PROVIDER: ${{ vars.LLM_PROVIDER }}
       OLLAMA_BASE_URL: ${{ vars.OLLAMA_BASE_URL }}
       OLLAMA_MODEL: ${{ vars.OLLAMA_MODEL }}

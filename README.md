@@ -52,6 +52,9 @@ Go to **Settings → Secrets and variables → Actions → Variables** and add a
 - **`SOURCES`**: optional domain list (example: `wsj.com,nytimes.com`)
 - **`MAX_ARTICLES`**: default `50`
 - **`NEWSAPI_Q_MAX_LEN`**: default `450` (if your query is very long, the script auto-splits it into multiple NewsAPI calls)
+- **`NEWS_LOOKBACK_DAYS`**: default `1` (increase if you often get “no news” on weekends/holidays)
+- **`VERIFY_EMPTY_RESULTS`**: default `1` (when zero articles are returned, run a sanity check query and print totals)
+- **`DEBUG`**: default `0` (prints batch counts / totals to help diagnose empty results)
 - **`LLM_PROVIDER`**: default `ollama`
 - **`OLLAMA_BASE_URL`**: default `http://localhost:11434`
 - **`OLLAMA_MODEL`**: default `llama3.2:3b`
