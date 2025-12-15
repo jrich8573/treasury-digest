@@ -2,7 +2,7 @@
 
 This repo contains a Python script (`treasury_digest.py`) that:
 
-- **Fetches** the last ~24 hours of U.S. Treasury-related news from **NewsAPI**
+- **Fetches** the last ~24 hours of U.S. Treasury-related news from **newsapi.ai** (Event Registry)
 - **Curates + summarizes** the most important themes using a **free local LLM (Ollama)**
 - **Emails** the resulting brief via **SMTP** (HTML + plain text)
 
@@ -19,7 +19,7 @@ All sensitive values (API keys, SMTP password, recipient emails) are read from *
 
 ### Step 1: Get your external credentials
 
-- **NewsAPI key**: create an API key on NewsAPI.org
+- **newsapi.ai key**: create an API key on [newsapi.ai](https://newsapi.ai)
 - **SMTP credentials**:
   - If using Gmail:
     - Turn on **2‑Step Verification**
@@ -32,7 +32,7 @@ All sensitive values (API keys, SMTP password, recipient emails) are read from *
 
 In your GitHub repo, go to **Settings → Secrets and variables → Actions → Secrets** and add:
 
-- **`NEWS_API_KEY`**: NewsAPI key
+- **`NEWSAPI_AI_KEY`**: newsapi.ai API key
 - **`SMTP_USER`**: SMTP username (often your email address)
 - **`SMTP_PASS`**: SMTP password / app password
 - **`TO_EMAILS`**: comma-separated recipient list (example: `person1@acme.com,person2@acme.com`)
@@ -51,7 +51,6 @@ Go to **Settings → Secrets and variables → Actions → Variables** and add a
 - **`QUERY`**: the NewsAPI query (default includes Treasury + IRS + Fed + economic policy + U.S. stock market terms)
 - **`SOURCES`**: domain allowlist (defaults to major finance outlets; override with your own comma-separated list)
 - **`MAX_ARTICLES`**: default `50`
-- **`NEWSAPI_Q_MAX_LEN`**: default `450` (if your query is very long, the script auto-splits it into multiple NewsAPI calls)
 - **`NEWS_LOOKBACK_DAYS`**: default `1` (increase if you often get “no news” on weekends/holidays)
 - **`VERIFY_EMPTY_RESULTS`**: default `1` (when zero articles are returned, run a sanity check query and print totals)
 - **`DEBUG`**: default `0` (prints batch counts / totals to help diagnose empty results)
@@ -92,7 +91,7 @@ You can export env vars in your shell (or use a `.env` loader of your choice).
 
 Required:
 
-- `NEWS_API_KEY`
+- `NEWSAPI_AI_KEY`
 - `SMTP_USER`
 - `SMTP_PASS`
 - `TO_EMAILS`

@@ -5,8 +5,10 @@ import textwrap
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlparse
 
 import requests
+from eventregistry import EventRegistry, QueryArticlesIter, QueryItems, ReturnInfo, ArticleInfoFlags
 
 # ------------- CONFIG ------------- #
 
@@ -24,6 +26,13 @@ def _require_env(name: str) -> str:
     if value is None or not str(value).strip():
         raise RuntimeError(f"Missing required environment variable: {name}")
     return value.strip()
+
+def _require_any_env(names: list[str]) -> str:
+    for n in names:
+        v = os.environ.get(n)
+        if v is not None and str(v).strip():
+            return str(v).strip()
+    raise RuntimeError(f"Missing required environment variable (any of): {', '.join(names)}")
 
 
 def _parse_email_list(raw: str) -> list[str]:
@@ -49,7 +58,7 @@ def _is_truthy(raw: str | None) -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
-NEWS_API_KEY = _require_env("NEWS_API_KEY")              # NewsAPI.org key
+NEWSAPI_AI_KEY = _require_any_env(["NEWSAPI_AI_KEY", "NEWS_API_KEY"])  # prefer NEWSAPI_AI_KEY
 
 # SMTP / email settings
 SMTP_HOST = _env("SMTP_HOST", "smtp.gmail.com")
@@ -91,7 +100,6 @@ SOURCES = _env(
     ),
 )  # override with env var if desired
 MAX_ARTICLES = int(_env("MAX_ARTICLES", "50"))
-NEWSAPI_Q_MAX_LEN = int(_env("NEWSAPI_Q_MAX_LEN", "450"))  # safety limit for long q=... strings
 NEWS_LOOKBACK_DAYS = int(_env("NEWS_LOOKBACK_DAYS", "1"))
 
 # LLM parameters (free/local via Ollama by default)
@@ -108,121 +116,140 @@ OLLAMA_TIMEOUT_SECONDS = int(_env("OLLAMA_TIMEOUT_SECONDS", "120"))
 # ------------- NEWS FETCHER ------------- #
 
 def fetch_treasury_news():
-    """Fetch recent U.S. Treasury-related news from NewsAPI."""
-    url = "https://newsapi.org/v2/everything"
     now = datetime.now(timezone.utc)
-    from_date = (now - timedelta(days=NEWS_LOOKBACK_DAYS)).isoformat()
+    date_end = now.date().isoformat()
+    date_start = (now - timedelta(days=NEWS_LOOKBACK_DAYS)).date().isoformat()
 
     def _normalize_query(q: str) -> str:
-        # NewsAPI expects boolean operators in uppercase; also trim whitespace.
+        # Normalize boolean operators; also trim whitespace/newlines.
         q2 = q.replace(" or ", " OR ").replace(" and ", " AND ").replace(" not ", " NOT ")
         return " ".join(q2.split())
 
     def _split_or_terms(q: str) -> list[str]:
-        # Very simple splitter; good enough for common `"phrase" OR "phrase"` usage.
+        # Convert `"A" OR "B"` query strings into keyword list for newsapi.ai.
         q_norm = _normalize_query(q)
         parts = [p.strip() for p in q_norm.split(" OR ") if p.strip()]
-        return parts if parts else [q_norm]
+        cleaned = []
+        for p in parts:
+            # drop surrounding quotes if present
+            if (p.startswith('"') and p.endswith('"')) or (p.startswith("'") and p.endswith("'")):
+                p = p[1:-1]
+            p = p.strip()
+            if p:
+                cleaned.append(p)
+        # De-dupe while preserving order
+        seen = set()
+        out = []
+        for c in cleaned:
+            if c not in seen:
+                out.append(c)
+                seen.add(c)
+        return out
 
-    def _batch_terms(terms: list[str], max_len: int) -> list[str]:
-        batches: list[str] = []
-        current: list[str] = []
-        for t in terms:
-            candidate = t if not current else (" OR ".join(current + [t]))
-            if len(candidate) > max_len and current:
-                batches.append(" OR ".join(current))
-                current = [t]
-            else:
-                current.append(t)
-        if current:
-            batches.append(" OR ".join(current))
-        return batches
+    def _parse_domains(raw: str | None) -> list[str]:
+        if not raw:
+            return []
+        return [d.strip().lower() for d in raw.split(",") if d.strip()]
 
-    def _newsapi_get(q: str, *, from_iso: str, page_size: int) -> dict:
-        params = {
-            "q": q,
-            "from": from_iso,
-            "language": "en",
-            "sortBy": "publishedAt",
-            "pageSize": page_size,
-            "apiKey": NEWS_API_KEY,
-        }
-        if SOURCES:
-            params["domains"] = SOURCES
+    def _domain_allowed(url: str, allowlist: list[str]) -> bool:
+        if not allowlist:
+            return True
+        try:
+            host = urlparse(url).netloc.lower()
+        except Exception:
+            return False
+        if host.startswith("www."):
+            host = host[4:]
+        return any(host == d or host.endswith("." + d) for d in allowlist)
 
-        resp = requests.get(url, params=params, timeout=30)
-        if not resp.ok:
-            # NewsAPI usually returns JSON: {status, code, message}
-            try:
-                err = resp.json()
-                msg = err.get("message") or str(err)
-            except Exception:
-                msg = resp.text
-            raise RuntimeError(f"NewsAPI request failed ({resp.status_code}): {msg}")
-        return resp.json()
+    keywords = _split_or_terms(QUERY)
+    if not keywords:
+        keywords = ["United States Treasury"]
 
-    query_norm = _normalize_query(QUERY)
-    if len(query_norm) > NEWSAPI_Q_MAX_LEN:
-        terms = _split_or_terms(query_norm)
-        query_batches = _batch_terms(terms, NEWSAPI_Q_MAX_LEN)
-    else:
-        query_batches = [query_norm]
+    # Pull more than MAX_ARTICLES since we may filter by SOURCES domains afterwards
+    fetch_max = min(200, max(MAX_ARTICLES, 1) * 3)
+    allow_domains = _parse_domains(SOURCES)
+
+    er = EventRegistry(apiKey=NEWSAPI_AI_KEY)
+    q = QueryArticlesIter(
+        keywords=QueryItems.OR(keywords),
+        lang="eng",
+        dateStart=date_start,
+        dateEnd=date_end,
+    )
 
     articles = []
     seen_urls = set()
-    batch_totals: list[int] = []
-    for q in query_batches:
-        data = _newsapi_get(q, from_iso=from_date, page_size=min(100, MAX_ARTICLES))
-        batch_totals.append(int(data.get("totalResults") or 0))
-        for a in (data.get("articles", []) or []):
-            url_a = a.get("url")
-            if not url_a or url_a in seen_urls:
-                continue
-            seen_urls.add(url_a)
-            articles.append(
-                {
-                    "title": a.get("title"),
-                    "description": a.get("description"),
-                    "source": a.get("source", {}).get("name"),
-                    "url": url_a,
-                    "published_at": a.get("publishedAt"),
-                }
-            )
+    fetched = 0
+    kept = 0
+    for art in q.execQuery(
+        er,
+        sortBy="date",
+        maxItems=fetch_max,
+        returnInfo=ReturnInfo(articleInfo=ArticleInfoFlags(basicInfo=True, body=True, sourceInfo=True)),
+    ):
+        fetched += 1
+        url_a = art.get("url")
+        if not url_a or url_a in seen_urls:
+            continue
+        if not _domain_allowed(url_a, allow_domains):
+            continue
+        seen_urls.add(url_a)
+        kept += 1
+        articles.append(
+            {
+                "title": art.get("title"),
+                "description": art.get("body") or art.get("summary") or art.get("title"),
+                "source": (art.get("source") or {}).get("title") or (art.get("source") or {}).get("uri"),
+                "url": url_a,
+                "published_at": art.get("dateTime") or art.get("date"),
+            }
+        )
+        if len(articles) >= MAX_ARTICLES:
+            break
 
-    # Keep at most MAX_ARTICLES. Each request is sorted, but merging batches can interleave.
+    # Keep deterministic ordering (newest first)
     articles.sort(key=lambda x: x.get("published_at") or "", reverse=True)
-    articles = articles[:MAX_ARTICLES]
 
     if DEBUG:
         print(
-            f"NewsAPI debug: lookback_days={NEWS_LOOKBACK_DAYS}, "
-            f"batches={len(query_batches)}, batch_totalResults={batch_totals}, "
-            f"returned_articles={len(articles)}"
+            "newsapi.ai debug: "
+            f"lookback_days={NEWS_LOOKBACK_DAYS}, dateStart={date_start}, dateEnd={date_end}, "
+            f"keywords={len(keywords)}, allow_domains={len(allow_domains)}, "
+            f"fetched={fetched}, kept={kept}, returned={len(articles)}"
         )
 
     # Verification: if empty, do a cheap sanity check to confirm this is accurate.
     if VERIFY_EMPTY_RESULTS and not articles:
         try:
-            sanity_q = "Treasury OR Federal Reserve OR IRS"
-            sanity_1d = _newsapi_get(
-                sanity_q,
-                from_iso=(now - timedelta(days=1)).isoformat(),
-                page_size=1,
+            sanity_keywords = ["Treasury", "Federal Reserve", "IRS"]
+            sanity_1d = QueryArticlesIter(
+                keywords=QueryItems.OR(sanity_keywords),
+                lang="eng",
+                dateStart=(now - timedelta(days=1)).date().isoformat(),
+                dateEnd=date_end,
             )
-            sanity_7d = _newsapi_get(
-                sanity_q,
-                from_iso=(now - timedelta(days=7)).isoformat(),
-                page_size=1,
+            sanity_7d = QueryArticlesIter(
+                keywords=QueryItems.OR(sanity_keywords),
+                lang="eng",
+                dateStart=(now - timedelta(days=7)).date().isoformat(),
+                dateEnd=date_end,
             )
+            sanity_1d_count = 0
+            for _ in sanity_1d.execQuery(er, sortBy="date", maxItems=1):
+                sanity_1d_count += 1
+            sanity_7d_count = 0
+            for _ in sanity_7d.execQuery(er, sortBy="date", maxItems=1):
+                sanity_7d_count += 1
             print(
-                "NewsAPI empty-results check: "
-                f"your_query_batches={len(query_batches)} totalResults_sum={sum(batch_totals)}; "
-                f"sanity_query_totalResults_1d={int(sanity_1d.get('totalResults') or 0)}; "
-                f"sanity_query_totalResults_7d={int(sanity_7d.get('totalResults') or 0)}; "
-                "If sanity totals are > 0, widen NEWS_LOOKBACK_DAYS or simplify QUERY/SOURCES."
+                "newsapi.ai empty-results check: "
+                f"your_keywords={len(keywords)} allow_domains={len(allow_domains)}; "
+                f"sanity_has_results_1d={sanity_1d_count > 0}; "
+                f"sanity_has_results_7d={sanity_7d_count > 0}; "
+                "If sanity is true but your results are empty, loosen SOURCES or simplify QUERY / increase NEWS_LOOKBACK_DAYS."
             )
         except Exception as e:
-            print(f"NewsAPI empty-results check failed: {e}")
+            print(f"newsapi.ai empty-results check failed: {e}")
 
     return articles
 

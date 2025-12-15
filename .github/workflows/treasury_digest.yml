@@ -23,7 +23,8 @@ jobs:
           - 11434:11434
     env:
       # Required (Secrets preferred; Variables supported)
-      NEWS_API_KEY: ${{ secrets.NEWS_API_KEY || vars.NEWS_API_KEY }}
+      # News source (newsapi.ai / Event Registry). Prefer NEWSAPI_AI_KEY, but allow legacy NEWS_API_KEY.
+      NEWSAPI_AI_KEY: ${{ secrets.NEWSAPI_AI_KEY || secrets.NEWS_API_KEY || vars.NEWSAPI_AI_KEY || vars.NEWS_API_KEY }}
       SMTP_USER: ${{ secrets.SMTP_USER || vars.SMTP_USER }}
       SMTP_PASS: ${{ secrets.SMTP_PASS || vars.SMTP_PASS }}
       TO_EMAILS: ${{ secrets.TO_EMAILS || vars.TO_EMAILS }}
@@ -39,7 +40,6 @@ jobs:
       SOURCES: ${{ vars.SOURCES }}
       MAX_ARTICLES: ${{ vars.MAX_ARTICLES }}
       NEWS_LOOKBACK_DAYS: ${{ vars.NEWS_LOOKBACK_DAYS }}
-      NEWSAPI_Q_MAX_LEN: ${{ vars.NEWSAPI_Q_MAX_LEN }}
       DEBUG: ${{ vars.DEBUG }}
       VERIFY_EMPTY_RESULTS: ${{ vars.VERIFY_EMPTY_RESULTS }}
       LLM_PROVIDER: ${{ vars.LLM_PROVIDER }}
@@ -60,9 +60,9 @@ jobs:
       - name: Debug (safe)
         run: |
           echo "Job environment name:          ${{ vars.DIGEST_ENVIRONMENT || 'treasury-digest' }}"
-          echo "Has NEWS_API_KEY from Secrets? ${{ secrets.NEWS_API_KEY != '' }}"
-          echo "Has NEWS_API_KEY from Vars?    ${{ vars.NEWS_API_KEY != '' }}"
-          echo "Runtime NEWS_API_KEY set?      $([ -n "${NEWS_API_KEY:-}" ] && echo yes || echo no)"
+          echo "Has NEWSAPI_AI_KEY from Secrets? ${{ secrets.NEWSAPI_AI_KEY != '' }}"
+          echo "Has NEWSAPI_AI_KEY from Vars?    ${{ vars.NEWSAPI_AI_KEY != '' }}"
+          echo "Runtime NEWSAPI_AI_KEY set?      $([ -n "${NEWSAPI_AI_KEY:-}" ] && echo yes || echo no)"
           echo "Workflow ref: $GITHUB_REF"
 
       - name: Warm up Ollama model
@@ -80,7 +80,7 @@ jobs:
       - name: Run digest
         run: |
           # Presence checks (do not print secret values)
-          for v in NEWS_API_KEY SMTP_USER SMTP_PASS TO_EMAILS; do
+          for v in NEWSAPI_AI_KEY SMTP_USER SMTP_PASS TO_EMAILS; do
             if [ -z "${!v}" ]; then
               echo "Missing required env var: $v"
               exit 1
