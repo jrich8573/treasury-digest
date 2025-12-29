@@ -394,24 +394,58 @@ def _ollama_chat(system_prompt: str, user_prompt: str) -> str:
             "num_predict": LLM_MAX_TOKENS,
         },
     }
-    resp = requests.post(url, json=payload, timeout=OLLAMA_TIMEOUT_SECONDS)
-    resp.raise_for_status()
-    data = resp.json()
-    msg = (data.get("message") or {}).get("content")
-    if not msg:
-        raise RuntimeError("Ollama response missing message.content")
-    return msg
+    try:
+        resp = requests.post(url, json=payload, timeout=OLLAMA_TIMEOUT_SECONDS)
+        resp.raise_for_status()
+        data = resp.json()
+        msg = (data.get("message") or {}).get("content")
+        if not msg:
+            raise RuntimeError("Ollama response missing message.content")
+        return msg
+    except Exception as e:
+        raise RuntimeError(f"Ollama chat failed: {e}")
+
+
+def _basic_curator(articles) -> str:
+    if not articles:
+        return "# U.S. Treasury News\n\nNo significant U.S. Treasury news found in the last lookback window."
+
+    lines = ["# U.S. Treasury News Digest", "", "## Top Stories"]
+    for i, a in enumerate(articles[:min(10, len(articles))], start=1):
+        title = a.get("title") or "Untitled"
+        src = a.get("source") or "Unknown"
+        pub = a.get("published_at") or ""
+        url = a.get("url") or ""
+        summary = a.get("description") or ""
+        lines.append(f"- [{title}]({url})\n  - Source: {src} | Published: {pub}\n  - Summary: {summary}")
+
+    lines.append("")
+    lines.append("## Market & Policy Takeaways")
+    lines.extend([
+        "- Treasury/IRS/Fed-related activity highlighted above.",
+        "- For deeper analysis, LLM summarization is disabled or unavailable.",
+        "- Consider broadening domains or increasing lookback on low-volume days.",
+    ])
+
+    return "\n".join(lines)
 
 
 def _curate_with_llm(system_prompt: str, user_prompt: str) -> str:
     if LLM_PROVIDER == "ollama":
-        return _ollama_chat(system_prompt=system_prompt, user_prompt=user_prompt)
-    raise RuntimeError(f"Unsupported LLM_PROVIDER: {LLM_PROVIDER}. Supported: ollama")
+        try:
+            return _ollama_chat(system_prompt=system_prompt, user_prompt=user_prompt)
+        except Exception:
+            # Fallback to basic curation if local LLM is unavailable (e.g., CI runners).
+            return _basic_curator([])
+    if LLM_PROVIDER == "none":
+        return _basic_curator([])
+    raise RuntimeError(f"Unsupported LLM_PROVIDER: {LLM_PROVIDER}. Supported: ollama, none")
 
 
 def curate_with_gpt(articles):
     """Use an LLM to curate and summarize Treasury news."""
     if not articles:
+        # Provide a consistent message regardless of LLM provider when no articles are found.
         return "No significant U.S. Treasury news found in the last 24 hours."
 
     # Create a compact plain-text representation of the articles
@@ -450,7 +484,13 @@ Tasks:
 
 Output in **well-structured Markdown** suitable for an email body, with clear headings, bullet points, and embedded URLs where useful.
 """
-    return _curate_with_llm(system_prompt=system_prompt, user_prompt=user_prompt)
+    # If LLM is disabled or unavailable, produce a basic digest.
+    if LLM_PROVIDER == "none":
+        return _basic_curator(articles)
+    try:
+        return _curate_with_llm(system_prompt=system_prompt, user_prompt=user_prompt)
+    except Exception:
+        return _basic_curator(articles)
 
 
 # ------------- EMAIL BUILDER ------------- #
