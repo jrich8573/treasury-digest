@@ -27,5 +27,6 @@ jobs:
         env:
           NEWSAPI_AI_KEY: ${{ secrets.NEWSAPI_AI_KEY }}
           NEWS_API_KEY: ${{ secrets.NEWS_API_KEY }}
+          PYTHONPATH: ${{ github.workspace }}
         run: |
           pytest -q
