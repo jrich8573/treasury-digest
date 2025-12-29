@@ -79,26 +79,31 @@ DEBUG = _is_truthy(_env("DEBUG"))
 VERIFY_EMPTY_RESULTS = _is_truthy(_env("VERIFY_EMPTY_RESULTS", "1"))
 
 # Search parameters
-QUERY = _env("QUERY", 
-'"United States Treasury" OR "U.S. Treasury" OR "Treasury Department" OR "IRS" OR "Internal Revenue Service" OR "FRB" OR "Federal Reserve Board" OR "Federal Reserve" OR "Fiscal Policy" OR "Monetary Policy" OR "Economic Policy" OR "Economic Outlook" OR "Economic Data" OR "Stock Market" OR "United States Stock Market" OR "NYSE" OR "NASDAQ"')
-SOURCES = _env(
-    "SOURCES",
-    # NewsAPI uses "domains" for filtering; comma-separated list.
-    ",".join(
-        [
-            "reuters.com",
-            "bloomberg.com",
-            "wsj.com",
-            "ft.com",
-            "cnbc.com",
-            "marketwatch.com",
-            "barrons.com",
-            "finance.yahoo.com",
-            "investing.com",
-            "seekingalpha.com",
-        ]
-    ),
-)  # override with env var if desired
+QUERY = _env(
+    "QUERY",
+    '"United States Treasury" OR "U.S. Treasury" OR "Treasury Department" OR "IRS" OR "Internal Revenue Service" OR "FRB" OR "Federal Reserve Board" OR "Federal Reserve" OR "Fiscal Policy" OR "Monetary Policy" OR "Economic Policy" OR "Economic Outlook" OR "Economic Data" OR "Stock Market" OR "United States Stock Market" OR "NYSE" OR "NASDAQ"',
+)
+# Domain allowlist (applied locally after fetching). Prefer ALLOW_DOMAINS, fallback to legacy SOURCES.
+_default_domains = ",".join(
+    [
+        "reuters.com",
+        # Premium/paywalled domains below may yield few/no matches from EventRegistry
+        "bloomberg.com",
+        "wsj.com",
+        "ft.com",
+        # More broadly available outlets
+        "cnbc.com",
+        "marketwatch.com",
+        "barrons.com",
+        "finance.yahoo.com",
+        "investing.com",
+        "seekingalpha.com",
+        # Useful official sources
+        "treasury.gov",
+        "federalreserve.gov",
+    ]
+)
+SOURCES = _env("ALLOW_DOMAINS", _env("SOURCES", _default_domains))  # override with env var if desired
 MAX_ARTICLES = int(_env("MAX_ARTICLES", "50"))
 NEWS_LOOKBACK_DAYS = int(_env("NEWS_LOOKBACK_DAYS", "1"))
 
@@ -126,8 +131,11 @@ def fetch_treasury_news():
         return " ".join(q2.split())
 
     def _split_or_terms(q: str) -> list[str]:
-        # Convert `"A" OR "B"` query strings into keyword list for newsapi.ai.
+        # Convert OR-style query strings into a keyword list for newsapi.ai.
+        # Supports separators: OR, comma, or pipe.
         q_norm = _normalize_query(q)
+        for sep in ["|", ","]:
+            q_norm = q_norm.replace(sep, " OR ")
         parts = [p.strip() for p in q_norm.split(" OR ") if p.strip()]
         cleaned = []
         for p in parts:
@@ -178,35 +186,46 @@ def fetch_treasury_news():
         dateEnd=date_end,
     )
 
-    articles = []
-    seen_urls = set()
-    fetched = 0
-    kept = 0
-    for art in q.execQuery(
-        er,
-        sortBy="date",
-        maxItems=fetch_max,
-        returnInfo=ReturnInfo(articleInfo=ArticleInfoFlags(basicInfo=True, body=True, sourceInfo=True)),
-    ):
-        fetched += 1
-        url_a = art.get("url")
-        if not url_a or url_a in seen_urls:
-            continue
-        if not _domain_allowed(url_a, allow_domains):
-            continue
-        seen_urls.add(url_a)
-        kept += 1
-        articles.append(
-            {
-                "title": art.get("title"),
-                "description": art.get("body") or art.get("summary") or art.get("title"),
-                "source": (art.get("source") or {}).get("title") or (art.get("source") or {}).get("uri"),
-                "url": url_a,
-                "published_at": art.get("dateTime") or art.get("date"),
-            }
-        )
-        if len(articles) >= MAX_ARTICLES:
-            break
+    def _collect_articles(allow_domains_list: list[str]) -> tuple[list[dict], int, int]:
+        articles_local: list[dict] = []
+        seen_urls_local: set[str] = set()
+        fetched_local = 0
+        kept_local = 0
+        for art in q.execQuery(
+            er,
+            sortBy="date",
+            maxItems=fetch_max,
+            returnInfo=ReturnInfo(articleInfo=ArticleInfoFlags(basicInfo=True, body=True, sourceInfo=True)),
+        ):
+            fetched_local += 1
+            url_a = art.get("url")
+            if not url_a or url_a in seen_urls_local:
+                continue
+            if not _domain_allowed(url_a, allow_domains_list):
+                continue
+            seen_urls_local.add(url_a)
+            kept_local += 1
+            articles_local.append(
+                {
+                    "title": art.get("title"),
+                    "description": art.get("body") or art.get("summary") or art.get("title"),
+                    "source": (art.get("source") or {}).get("title") or (art.get("source") or {}).get("uri"),
+                    "url": url_a,
+                    "published_at": art.get("dateTime") or art.get("date"),
+                }
+            )
+            if len(articles_local) >= MAX_ARTICLES:
+                break
+        return articles_local, fetched_local, kept_local
+
+    # First pass: with allowlist
+    articles, fetched, kept = _collect_articles(allow_domains)
+
+    # Fallback: if nothing kept due to strict domains, try without domain filtering
+    fallback_used = False
+    if not articles and allow_domains:
+        fallback_used = True
+        articles, fetched, kept = _collect_articles([])
 
     # Keep deterministic ordering (newest first)
     articles.sort(key=lambda x: x.get("published_at") or "", reverse=True)
@@ -216,7 +235,8 @@ def fetch_treasury_news():
             "newsapi.ai debug: "
             f"lookback_days={NEWS_LOOKBACK_DAYS}, dateStart={date_start}, dateEnd={date_end}, "
             f"keywords={len(keywords)}, allow_domains={len(allow_domains)}, "
-            f"fetched={fetched}, kept={kept}, returned={len(articles)}"
+            f"fetched={fetched}, kept={kept}, returned={len(articles)}, "
+            f"fallback_no_domains_used={fallback_used}"
         )
 
     # Verification: if empty, do a cheap sanity check to confirm this is accurate.
@@ -246,7 +266,9 @@ def fetch_treasury_news():
                 f"your_keywords={len(keywords)} allow_domains={len(allow_domains)}; "
                 f"sanity_has_results_1d={sanity_1d_count > 0}; "
                 f"sanity_has_results_7d={sanity_7d_count > 0}; "
-                "If sanity is true but your results are empty, loosen SOURCES or simplify QUERY / increase NEWS_LOOKBACK_DAYS."
+                "If sanity is true but your results are empty, try: "
+                "(1) clear ALLOW_DOMAINS/SOURCES, (2) simplify QUERY to fewer phrases, "
+                "(3) increase NEWS_LOOKBACK_DAYS."
             )
         except Exception as e:
             print(f"newsapi.ai empty-results check failed: {e}")
