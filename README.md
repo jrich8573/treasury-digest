@@ -15,6 +15,16 @@ The workflow `.github/workflows/treasury_digest.yml` runs the script:
 
 All sensitive values (API keys, SMTP password, recipient emails) are read from **GitHub Secrets / Variables**—nothing is hardcoded.
 
+### CI Tests (GitHub Actions)
+
+The workflow at [.github/workflows/ci.yml](.github/workflows/ci.yml) runs tests on pushes and pull requests. It:
+
+- Sets up Python and installs dependencies from [requirements.txt](requirements.txt)
+- Validates EventRegistry connectivity (requires `NEWSAPI_AI_KEY` or `NEWS_API_KEY` secret)
+- Exercises the fetcher in dry-run mode
+
+Add the repository secret `NEWSAPI_AI_KEY` (or `NEWS_API_KEY`) under GitHub → Settings → Secrets and variables → Actions.
+
 ## Configuration (required)
 
 ### Step 1: Get your external credentials
@@ -49,7 +59,7 @@ Go to **Settings → Secrets and variables → Actions → Variables** and add a
 - **`SMTP_PORT`**: default `587` (`starttls`/`none`) or `465` (`ssl`)
 - **`SMTP_SECURITY`**: default `starttls` (supported: `starttls`, `ssl`, `none`)
 - **`QUERY`**: the NewsAPI query (default includes Treasury + IRS + Fed + economic policy + U.S. stock market terms)
-- **`SOURCES`**: domain allowlist (defaults to major finance outlets; override with your own comma-separated list)
+- **`ALLOW_DOMAINS` / `SOURCES`**: domain allowlist (defaults to major finance outlets; override with your own comma-separated list). If filtering yields zero articles, the script automatically falls back to no domain filter to avoid false empties.
 - **`MAX_ARTICLES`**: default `50`
 - **`NEWS_LOOKBACK_DAYS`**: default `1` (increase if you often get “no news” on weekends/holidays)
 - **`VERIFY_EMPTY_RESULTS`**: default `1` (when zero articles are returned, run a sanity check query and print totals)
@@ -69,7 +79,7 @@ Default `QUERY` used by the script:
 
 Default `SOURCES` used by the script:
 
-`reuters.com,bloomberg.com,wsj.com,ft.com,cnbc.com,marketwatch.com,barrons.com,finance.yahoo.com,investing.com,seekingalpha.com`
+`reuters.com,bloomberg.com,wsj.com,ft.com,cnbc.com,marketwatch.com,barrons.com,finance.yahoo.com,investing.com,seekingalpha.com,treasury.gov,federalreserve.gov`
 
 ## Running locally
 
