@@ -81,7 +81,7 @@ VERIFY_EMPTY_RESULTS = _is_truthy(_env("VERIFY_EMPTY_RESULTS", "1"))
 # Search parameters
 QUERY = _env(
     "QUERY",
-    '"United States Treasury" OR "U.S. Treasury" OR "Treasury Department" OR "IRS" OR "Internal Revenue Service" OR "FRB" OR "Federal Reserve Board" OR "Federal Reserve" OR "Fiscal Policy" OR "Monetary Policy" OR "Economic Policy" OR "Economic Outlook" OR "Economic Data" OR "Stock Market" OR "United States Stock Market" OR "NYSE" OR "NASDAQ"',
+    '"United States Treasury" OR "U.S. Treasury" OR "Treasury Department" OR "IRS" OR "Internal Revenue Service" OR "FRB" OR "Federal Reserve Board" OR "Federal Reserve" OR "Fiscal Policy" OR "Monetary Policy" OR "Economic Policy"'
 )
 # Domain allowlist (applied locally after fetching). Prefer ALLOW_DOMAINS, fallback to legacy SOURCES.
 _default_domains = ",".join(
@@ -133,26 +133,39 @@ def fetch_treasury_news():
 
     def _split_or_terms(q: str) -> list[str]:
         # Convert OR-style query strings into a keyword list for newsapi.ai.
-        # Supports separators: OR, comma, or pipe.
+        # Supports separators: OR, comma, or pipe. Preserve/add quotes for multi-word phrases.
         q_norm = _normalize_query(q)
         for sep in ["|", ","]:
             q_norm = q_norm.replace(sep, " OR ")
         parts = [p.strip() for p in q_norm.split(" OR ") if p.strip()]
+
+        def _is_quoted(s: str) -> bool:
+            return (s.startswith('"') and s.endswith('"')) or (s.startswith("'") and s.endswith("'"))
+
         cleaned = []
         for p in parts:
-            # drop surrounding quotes if present
-            if (p.startswith('"') and p.endswith('"')) or (p.startswith("'") and p.endswith("'")):
-                p = p[1:-1]
             p = p.strip()
-            if p:
-                cleaned.append(p)
-        # De-dupe while preserving order
-        seen = set()
+            if not p:
+                continue
+            # If the term contains whitespace and isn't quoted, quote it to keep it as one phrase.
+            if not _is_quoted(p) and (" " in p or "\t" in p):
+                p = f'"{p}"'
+            cleaned.append(p)
+
+        # De-dupe while preserving order (normalize quotes for comparison)
+        def _norm(s: str) -> str:
+            s2 = s.strip()
+            if _is_quoted(s2):
+                s2 = s2[1:-1].strip()
+            return s2.lower()
+
+        seen_norm = set()
         out = []
         for c in cleaned:
-            if c not in seen:
+            key = _norm(c)
+            if key not in seen_norm:
                 out.append(c)
-                seen.add(c)
+                seen_norm.add(key)
         return out
 
     def _parse_domains(raw: str | None) -> list[str]:
@@ -175,7 +188,7 @@ def fetch_treasury_news():
     if not keywords:
         keywords = ["United States Treasury"]
 
-    # Respect provider subscription limits on max keywords.
+    # Respect provider subscription limits on max keywords (phrases).
     if len(keywords) > NEWSAPI_KEYWORD_LIMIT:
         # Prefer high-signal Treasury/Fed terms first, then fill remaining order-preserving.
         priority = [
@@ -191,21 +204,37 @@ def fetch_treasury_news():
             "Monetary Policy",
             "Economic Policy",
         ]
+
+        def _strip_quotes(s: str) -> str:
+            s2 = s.strip()
+            if (s2.startswith('"') and s2.endswith('"')) or (s2.startswith("'") and s2.endswith("'")):
+                return s2[1:-1].strip()
+            return s2
+
+        # Map normalized phrase -> original representation (quoted if multi-word)
+        kw_map = {}
+        for kw in keywords:
+            norm = _strip_quotes(kw).lower()
+            if norm not in kw_map:
+                kw_map[norm] = kw
+
         selected = []
-        seen = set()
+        seen_norm = set()
         # Add priority terms that are present
         for p in priority:
-            if p in keywords and p not in seen:
-                selected.append(p)
-                seen.add(p)
+            pn = p.lower()
+            if pn in kw_map and pn not in seen_norm:
+                selected.append(kw_map[pn])
+                seen_norm.add(pn)
                 if len(selected) >= NEWSAPI_KEYWORD_LIMIT:
                     break
         # Fill with remaining keywords in original order
         if len(selected) < NEWSAPI_KEYWORD_LIMIT:
-            for k in keywords:
-                if k not in seen:
-                    selected.append(k)
-                    seen.add(k)
+            for kw in keywords:
+                kn = _strip_quotes(kw).lower()
+                if kn not in seen_norm:
+                    selected.append(kw)
+                    seen_norm.add(kn)
                     if len(selected) >= NEWSAPI_KEYWORD_LIMIT:
                         break
         keywords = selected
