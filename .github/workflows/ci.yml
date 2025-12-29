@@ -28,5 +28,21 @@ jobs:
           NEWSAPI_AI_KEY: ${{ secrets.NEWSAPI_AI_KEY }}
           NEWS_API_KEY: ${{ secrets.NEWS_API_KEY }}
           PYTHONPATH: ${{ github.workspace }}
+          # SMTP / email secrets (not used to send in tests; DRY_RUN enforced)
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          FROM_EMAIL: ${{ secrets.FROM_EMAIL }}
+          TO_EMAILS: ${{ secrets.TO_EMAILS }}
+          # Optional repository variables
+          SMTP_HOST: ${{ vars.SMTP_HOST }}
+          SMTP_PORT: ${{ vars.SMTP_PORT }}
+          SMTP_SECURITY: ${{ vars.SMTP_SECURITY }}
+          QUERY: ${{ vars.QUERY }}
+          ALLOW_DOMAINS: ${{ vars.ALLOW_DOMAINS }}
+          SOURCES: ${{ vars.SOURCES }}
+          MAX_ARTICLES: ${{ vars.MAX_ARTICLES }}
+          NEWS_LOOKBACK_DAYS: ${{ vars.NEWS_LOOKBACK_DAYS }}
+          DEBUG: ${{ vars.DEBUG }}
+          VERIFY_EMPTY_RESULTS: ${{ vars.VERIFY_EMPTY_RESULTS }}
         run: |
           pytest -q
