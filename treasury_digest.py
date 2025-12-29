@@ -106,6 +106,7 @@ _default_domains = ",".join(
 SOURCES = _env("ALLOW_DOMAINS", _env("SOURCES", _default_domains))  # override with env var if desired
 MAX_ARTICLES = int(_env("MAX_ARTICLES", "50"))
 NEWS_LOOKBACK_DAYS = int(_env("NEWS_LOOKBACK_DAYS", "1"))
+NEWSAPI_KEYWORD_LIMIT = int(_env("NEWSAPI_KEYWORD_LIMIT", "15"))
 
 # LLM parameters (free/local via Ollama by default)
 LLM_PROVIDER = _env("LLM_PROVIDER", "ollama").strip().lower()  # "ollama"
@@ -174,6 +175,41 @@ def fetch_treasury_news():
     if not keywords:
         keywords = ["United States Treasury"]
 
+    # Respect provider subscription limits on max keywords.
+    if len(keywords) > NEWSAPI_KEYWORD_LIMIT:
+        # Prefer high-signal Treasury/Fed terms first, then fill remaining order-preserving.
+        priority = [
+            "United States Treasury",
+            "Treasury Department",
+            "U.S. Treasury",
+            "Internal Revenue Service",
+            "IRS",
+            "Federal Reserve",
+            "Federal Reserve Board",
+            "FRB",
+            "Fiscal Policy",
+            "Monetary Policy",
+            "Economic Policy",
+        ]
+        selected = []
+        seen = set()
+        # Add priority terms that are present
+        for p in priority:
+            if p in keywords and p not in seen:
+                selected.append(p)
+                seen.add(p)
+                if len(selected) >= NEWSAPI_KEYWORD_LIMIT:
+                    break
+        # Fill with remaining keywords in original order
+        if len(selected) < NEWSAPI_KEYWORD_LIMIT:
+            for k in keywords:
+                if k not in seen:
+                    selected.append(k)
+                    seen.add(k)
+                    if len(selected) >= NEWSAPI_KEYWORD_LIMIT:
+                        break
+        keywords = selected
+
     # Pull more than MAX_ARTICLES since we may filter by SOURCES domains afterwards
     fetch_max = min(200, max(MAX_ARTICLES, 1) * 3)
     allow_domains = _parse_domains(SOURCES)
@@ -234,7 +270,7 @@ def fetch_treasury_news():
         print(
             "newsapi.ai debug: "
             f"lookback_days={NEWS_LOOKBACK_DAYS}, dateStart={date_start}, dateEnd={date_end}, "
-            f"keywords={len(keywords)}, allow_domains={len(allow_domains)}, "
+            f"keywords={len(keywords)} (limit={NEWSAPI_KEYWORD_LIMIT}), allow_domains={len(allow_domains)}, "
             f"fetched={fetched}, kept={kept}, returned={len(articles)}, "
             f"fallback_no_domains_used={fallback_used}"
         )

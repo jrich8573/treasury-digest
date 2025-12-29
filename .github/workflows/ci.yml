@@ -38,6 +38,7 @@ jobs:
           SMTP_PORT: ${{ vars.SMTP_PORT }}
           SMTP_SECURITY: ${{ vars.SMTP_SECURITY }}
           QUERY: ${{ vars.QUERY }}
+          NEWSAPI_KEYWORD_LIMIT: ${{ vars.NEWSAPI_KEYWORD_LIMIT }}
           ALLOW_DOMAINS: ${{ vars.ALLOW_DOMAINS }}
           SOURCES: ${{ vars.SOURCES }}
           MAX_ARTICLES: ${{ vars.MAX_ARTICLES }}
