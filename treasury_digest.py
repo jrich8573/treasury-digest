@@ -188,56 +188,87 @@ def fetch_treasury_news():
     if not keywords:
         keywords = ["United States Treasury"]
 
-    # Respect provider subscription limits on max keywords (phrases).
-    if len(keywords) > NEWSAPI_KEYWORD_LIMIT:
-        # Prefer high-signal Treasury/Fed terms first, then fill remaining order-preserving.
-        priority = [
-            "United States Treasury",
-            "Treasury Department",
-            "U.S. Treasury",
-            "Internal Revenue Service",
-            "IRS",
-            "Federal Reserve",
-            "Federal Reserve Board",
-            "FRB",
-            "Fiscal Policy",
-            "Monetary Policy",
-            "Economic Policy",
-        ]
+    # Respect provider subscription limits based on token count across keywords/phrases.
+    def _strip_quotes(s: str) -> str:
+        s2 = s.strip()
+        if (s2.startswith('"') and s2.endswith('"')) or (s2.startswith("'") and s2.endswith("'")):
+            return s2[1:-1].strip()
+        return s2
 
-        def _strip_quotes(s: str) -> str:
-            s2 = s.strip()
-            if (s2.startswith('"') and s2.endswith('"')) or (s2.startswith("'") and s2.endswith("'")):
-                return s2[1:-1].strip()
-            return s2
+    def _token_count(kw: str) -> int:
+        base = _strip_quotes(kw)
+        # Split on whitespace; punctuation stays attached, which matches EventRegistry's effective tokenization for this use.
+        tokens = [t for t in base.split() if t]
+        return len(tokens) if tokens else 0
 
-        # Map normalized phrase -> original representation (quoted if multi-word)
-        kw_map = {}
-        for kw in keywords:
-            norm = _strip_quotes(kw).lower()
-            if norm not in kw_map:
-                kw_map[norm] = kw
+    # Canonicalize longer phrases to compact synonyms to reduce token budget.
+    alias_map = {
+        "united states treasury": "Treasury",
+        "treasury department": "Treasury",
+        "u.s. treasury": "Treasury",
+        "internal revenue service": "IRS",
+        "federal reserve board": "Federal Reserve",
+    }
 
-        selected = []
-        seen_norm = set()
-        # Add priority terms that are present
-        for p in priority:
-            pn = p.lower()
-            if pn in kw_map and pn not in seen_norm:
-                selected.append(kw_map[pn])
-                seen_norm.add(pn)
-                if len(selected) >= NEWSAPI_KEYWORD_LIMIT:
-                    break
-        # Fill with remaining keywords in original order
-        if len(selected) < NEWSAPI_KEYWORD_LIMIT:
-            for kw in keywords:
-                kn = _strip_quotes(kw).lower()
-                if kn not in seen_norm:
-                    selected.append(kw)
-                    seen_norm.add(kn)
-                    if len(selected) >= NEWSAPI_KEYWORD_LIMIT:
-                        break
-        keywords = selected
+    # Build a normalized list with aliases applied, preserving original order and de-duping.
+    norm_to_canon = {}
+    ordered_canon = []
+    for kw in keywords:
+        norm = _strip_quotes(kw).lower()
+        canon = alias_map.get(norm, _strip_quotes(kw))
+        # Quote multi-word canonical phrases
+        canon_out = canon if (" " not in canon) else f'"{canon}"'
+        key = canon.lower()
+        if key not in norm_to_canon:
+            norm_to_canon[key] = canon_out
+            ordered_canon.append(canon_out)
+
+    # Priority selection (compact forms first) to fit within token budget.
+    priority = [
+        "Treasury",
+        "IRS",
+        "Federal Reserve",
+        "Fiscal Policy",
+        "Monetary Policy",
+        "Economic Policy",
+        "FRB",
+    ]
+    # Ensure priority exists in the candidate set in their canonical representation
+    priority_canon = []
+    for p in priority:
+        pc = p if (" " not in p) else f'"{p}"'
+        key = p.lower()
+        if key in norm_to_canon:
+            priority_canon.append(norm_to_canon[key])
+
+    selected = []
+    used = set()
+    budget = NEWSAPI_KEYWORD_LIMIT
+
+    def _try_add(item: str) -> bool:
+        k = _strip_quotes(item).lower()
+        if k in used:
+            return False
+        cost = _token_count(item)
+        if cost <= 0:
+            return False
+        nonlocal budget
+        if cost > budget:
+            return False
+        selected.append(item)
+        used.add(k)
+        budget -= cost
+        return True
+
+    # First, add priorities while budget allows.
+    for it in priority_canon:
+        _try_add(it)
+
+    # Then, fill remaining from ordered candidates.
+    for it in ordered_canon:
+        _try_add(it)
+
+    keywords = selected if selected else ordered_canon[:1]
 
     # Pull more than MAX_ARTICLES since we may filter by SOURCES domains afterwards
     fetch_max = min(200, max(MAX_ARTICLES, 1) * 3)
@@ -296,10 +327,11 @@ def fetch_treasury_news():
     articles.sort(key=lambda x: x.get("published_at") or "", reverse=True)
 
     if DEBUG:
+        total_tokens = sum(_token_count(k) for k in keywords)
         print(
             "newsapi.ai debug: "
             f"lookback_days={NEWS_LOOKBACK_DAYS}, dateStart={date_start}, dateEnd={date_end}, "
-            f"keywords={len(keywords)} (limit={NEWSAPI_KEYWORD_LIMIT}), allow_domains={len(allow_domains)}, "
+            f"keywords={len(keywords)} tokens={total_tokens} (limit={NEWSAPI_KEYWORD_LIMIT}), allow_domains={len(allow_domains)}, "
             f"fetched={fetched}, kept={kept}, returned={len(articles)}, "
             f"fallback_no_domains_used={fallback_used}"
         )
