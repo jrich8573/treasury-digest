@@ -432,11 +432,7 @@ def _basic_curator(articles) -> str:
 
 def _curate_with_llm(system_prompt: str, user_prompt: str) -> str:
     if LLM_PROVIDER == "ollama":
-        try:
-            return _ollama_chat(system_prompt=system_prompt, user_prompt=user_prompt)
-        except Exception:
-            # Fallback to basic curation if local LLM is unavailable (e.g., CI runners).
-            return _basic_curator([])
+        return _ollama_chat(system_prompt=system_prompt, user_prompt=user_prompt)
     if LLM_PROVIDER == "none":
         return _basic_curator([])
     raise RuntimeError(f"Unsupported LLM_PROVIDER: {LLM_PROVIDER}. Supported: ollama, none")
