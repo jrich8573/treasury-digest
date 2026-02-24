@@ -81,7 +81,7 @@ VERIFY_EMPTY_RESULTS = _is_truthy(_env("VERIFY_EMPTY_RESULTS", "1"))
 # Search parameters
 QUERY = _env(
     "QUERY",
-    '"United States Treasury" OR "U.S. Treasury" OR "Treasury Department" OR "IRS" OR "Internal Revenue Service" OR "FRB" OR "Federal Reserve Board" OR "Federal Reserve" OR "Fiscal Policy" OR "Monetary Policy" OR "Economic Policy"'
+    '"United States Treasury" OR "U.S. Treasury" OR "Treasury Department" OR "IRS" OR "Internal Revenue Service" OR "FRB" OR "Federal Reserve Board" OR "Federal Reserve"'
 )
 # Domain allowlist (applied locally after fetching). Prefer ALLOW_DOMAINS, fallback to legacy SOURCES.
 _default_domains = ",".join(
