@@ -228,9 +228,6 @@ def fetch_treasury_news():
         "Treasury",
         "IRS",
         "Federal Reserve",
-        "Fiscal Policy",
-        "Monetary Policy",
-        "Economic Policy",
         "FRB",
     ]
     # Ensure priority exists in the candidate set in their canonical representation
